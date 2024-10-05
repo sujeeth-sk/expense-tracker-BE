@@ -25,7 +25,7 @@ app.post('/register', async (req, res) => {
             username,
             password
         })
-        res.json(userDoc)
+        res.json({ok: true})
     } catch (error) {
         console.error(error)
         res.status(400).json(error)
@@ -39,7 +39,7 @@ app.post('/login', async (req,res) => {
         const passOk = JSON.stringify(password) == JSON.stringify(userDoc.password)
         if(passOk){
             console.log('okokok')
-            res.json(userDoc)
+            res.json({ok: true})
         } else {
             res.json("invalid password")
         }
