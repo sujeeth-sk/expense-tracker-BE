@@ -9,7 +9,7 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
-// Initialize DynamoDB Client with credentials
+// Initialize DynamoDB Client
 const dbClient = new DynamoDBClient({
   region: process.env.REGION,
   credentials: {
@@ -39,9 +39,9 @@ async function createTableIfNotExists(tableName, schema) {
     }
 }
 
-// Define schemas for your DynamoDB tables
+// Define updated schema for Expenses table (with userId, timestamp)
 const expenseSchema = {
-    TableName: process.env.TABLE_NAMES_EXPENSES, // Use environment variable for table name
+    TableName: process.env.TABLE_NAMES_EXPENSES,
     KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
     AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
     ProvisionedThroughput: {
@@ -60,85 +60,128 @@ const userSchema = {
     },
 };
 
-const budgetSchema = {
-    TableName: process.env.TABLE_NAMES_BUDGETS, // Use environment variable for table name
-    KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
-    AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
-    ProvisionedThroughput: {
-        ReadCapacityUnits: 5,
-        WriteCapacityUnits: 5, 
-    },
-};
+// Remove budgetSchema since it's unused
+// async function createTableIfNotExists(process.env.TABLE_NAMES_BUDGETS, budgetSchema) {}
 
-// Create tables if they don't exist
 async function setupDynamoTables() {
     await createTableIfNotExists(process.env.TABLE_NAMES_EXPENSES, expenseSchema);
     await createTableIfNotExists(process.env.TABLE_NAMES_USERS, userSchema);
-    await createTableIfNotExists(process.env.TABLE_NAMES_BUDGETS, budgetSchema);
 }
 
-// JWT secret key for signing tokens (use environment variable)
+// JWT secret key
 const secretSalt = process.env.SECRET_SALT;
+
+// Middleware to verify JWT and extract user ID
+function authenticateJWT(req, res, next) {
+    const token = req.cookies.token;
+    if (!token) return res.status(401).json({ error: "Unauthorized" });
+
+    jwt.verify(token, secretSalt, (err, decoded) => {
+        if (err) return res.status(403).json({ error: "Forbidden" });
+        req.user = decoded; // Attach user info to the request
+        next();
+    });
+}
 
 // Register endpoint
 app.post('/register', async (req, res) => {
-    const { password, username } = req.body;
-    const userId = uuidv4();
+    const { username, password } = req.body;
 
     const params = {
         TableName: process.env.TABLE_NAMES_USERS,
         Item: {
-            id: { S: userId },
+            id: { S: username }, // Use username as the unique identifier
             username: { S: username },
-            password: { S: password },
+            password: { S: password }, // Store the plain text password
         },
     };
 
     try {
-        await dbClient.send(new PutItemCommand(params));
-        jwt.sign({ username, id: userId }, secretSalt, {}, (err, token) => {
+        // Check if the user already exists
+        const getParams = {
+            TableName: process.env.TABLE_NAMES_USERS,
+            Key: {
+                id: { S: username },
+            },
+        };
+
+        const existingUser = await dbClient.send(new GetItemCommand(getParams));
+        if (existingUser.Item) {
+            return res.status(400).json({ message: "Username already exists" });
+        }
+
+        // If the user does not exist, create a new user
+        const userdoc = await dbClient.send(new PutItemCommand(params));
+
+        // Sign the JWT token
+        jwt.sign({ username, id: username }, secretSalt, {}, (err, token) => {
             if (err) throw err;
-            res.cookie('token', token).json({ id: userId, username });
+            console.log("User created: ", userdoc);
+            res.cookie('token', token).json({ 'ok':true });
         });
     } catch (error) {
-        console.error(error);
-        res.status(400).json(error);
+        console.error("Error during registration:", error);
+        res.status(400).json({ error: "Internal Server Error", details: error.message });
     }
 });
+
 
 // Login endpoint
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-    
+
+    // Use username to query the database
     const params = {
         TableName: process.env.TABLE_NAMES_USERS,
         Key: {
-            id: { S: username },
+            id: { S: username }, // Here id should be the unique identifier, which is the username
         },
     };
 
+    console.log("Retrieving params:", params);
+
     try {
         const { Item } = await dbClient.send(new GetItemCommand(params));
-        const passOk = Item && password === Item.password.S;
+        console.log("Retrieved item:", Item);
+
+        if (!Item) {
+            return res.status(401).json({ message: "User not found" });
+        }
+
+        // Verify the password
+        const passOk = password === Item.password.S; // Compare the provided password with the stored password
+        console.log({ Item, password, passOk });
 
         if (passOk) {
+            // Generate JWT token if the password is correct
             jwt.sign({ username, id: Item.id.S }, secretSalt, {}, (err, token) => {
                 if (err) throw err;
-                res.cookie('token', token).json({ id: Item.id.S, username });
+
+                res.cookie('token', token).json({ 'ok' : true });
+                console.log("User logged in successfully");
             });
         } else {
-            res.json("Invalid password");
+            res.status(401).json({ message: "Invalid password" });
         }
     } catch (error) {
-        console.error(error);
-        res.status(400).json(error);
+        console.error("Error during login:", error);
+        res.status(400).json({ error: "Internal Server Error", details: error.message });
     }
 });
 
-// Add Expense endpoint
-app.post('/add', async (req, res) => {
-    const { amount, category } = req.body;
+// Add Expense endpoint (updated to use userId from JWT and timestamp)
+app.post('/add', authenticateJWT, async (req, res) => {
+    let { amount, category } = req.body;
+
+    // Validate if amount is a number
+    if (isNaN(amount)) {
+        return res.status(400).json({ error: "Amount must be a number" });
+    }
+
+    amount = parseFloat(amount);
     const expenseId = uuidv4();
+    const userId = req.user.id; // Get user ID from JWT
+    const timestamp = new Date(); // Get current date
 
     const params = {
         TableName: process.env.TABLE_NAMES_EXPENSES,
@@ -146,36 +189,52 @@ app.post('/add', async (req, res) => {
             id: { S: expenseId },
             amount: { N: amount.toString() },
             category: { S: category },
+            userId: { S: userId }, // Store the user ID
+            date: { S: timestamp.toISOString() }, // Store date as ISO string
+            month: { N: (timestamp.getMonth() + 1).toString() }, // Store month as number
+            year: { N: timestamp.getFullYear().toString() }, // Store year as number
         },
     };
 
     try {
         await dbClient.send(new PutItemCommand(params));
-        res.json({ id: expenseId, amount, category });
+        console.log({ id: expenseId, amount, category, userId, date: timestamp });
+        res.json({ ok: true });
     } catch (error) {
-        console.error(error);
-        res.status(400).json(error);
+        console.error("Error while adding expense:", error);
+        res.status(400).json({ error: "Internal Server Error", details: error.message });
     }
 });
 
 // View all expenses
-app.get('/view', async (req, res) => {
+app.get('/view', authenticateJWT, async (req, res) => {
     const params = {
         TableName: process.env.TABLE_NAMES_EXPENSES,
+        FilterExpression: "userId = :userId",
+        ExpressionAttributeValues: {
+            ":userId": { S: req.user.id } // Filter expenses based on the logged-in user
+        },
     };
 
     try {
         const data = await dbClient.send(new ScanCommand(params));
         const expenses = data.Items.map(item => ({
             id: item.id.S,
-            amount: item.amount.N,
+            amount: item.amount.S,
             category: item.category.S,
+            date: item.date.S,
         }));
         res.json(expenses);
     } catch (error) {
         console.error(error);
-        res.status(400).json(error);
+        res.status(400).json({ error: "Internal Server Error", details: error.message });
     }
+});
+
+// Logout endpoint
+app.post('/logout', (req, res) => {
+    res.clearCookie('token');  // Clear the JWT token cookie
+    res.json({'ok':true});
 });
 
 // Start the server and initialize DynamoDB tables
