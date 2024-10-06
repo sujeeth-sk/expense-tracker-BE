@@ -4,25 +4,24 @@ import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
 import { DynamoDBClient, CreateTableCommand, DescribeTableCommand, PutItemCommand, GetItemCommand, ScanCommand } from '@aws-sdk/client-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
-import { PORT, SECRET_SALT, REGION, TABLE_NAMES, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY } from './secrets.js'; // placeholder for your secrets
+import dotenv from 'dotenv';
 
-// import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+// Load environment variables from .env file
+dotenv.config();
 
+// Initialize DynamoDB Client with credentials
 const dbClient = new DynamoDBClient({
-  region: REGION,
+  region: process.env.REGION,
   credentials: {
-    accessKeyId: AWS_ACCESS_KEY_ID,
-    secretAccessKey: AWS_SECRET_ACCESS_KEY,
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
 });
-
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(cookieParser());
-
-// const dbClient = new DynamoDBClient({ region: REGION });
 
 // Create tables if they don't exist
 async function createTableIfNotExists(tableName, schema) {
@@ -42,7 +41,7 @@ async function createTableIfNotExists(tableName, schema) {
 
 // Define schemas for your DynamoDB tables
 const expenseSchema = {
-    TableName: TABLE_NAMES.expenses,
+    TableName: process.env.TABLE_NAMES_EXPENSES, // Use environment variable for table name
     KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
     AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
     ProvisionedThroughput: {
@@ -52,7 +51,7 @@ const expenseSchema = {
 };
 
 const userSchema = {
-    TableName: TABLE_NAMES.users,
+    TableName: process.env.TABLE_NAMES_USERS, // Use environment variable for table name
     KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
     AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
     ProvisionedThroughput: {
@@ -62,7 +61,7 @@ const userSchema = {
 };
 
 const budgetSchema = {
-    TableName: TABLE_NAMES.budgets,
+    TableName: process.env.TABLE_NAMES_BUDGETS, // Use environment variable for table name
     KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
     AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
     ProvisionedThroughput: {
@@ -73,13 +72,13 @@ const budgetSchema = {
 
 // Create tables if they don't exist
 async function setupDynamoTables() {
-    await createTableIfNotExists(TABLE_NAMES.expenses, expenseSchema);
-    await createTableIfNotExists(TABLE_NAMES.users, userSchema);
-    await createTableIfNotExists(TABLE_NAMES.budgets, budgetSchema);
+    await createTableIfNotExists(process.env.TABLE_NAMES_EXPENSES, expenseSchema);
+    await createTableIfNotExists(process.env.TABLE_NAMES_USERS, userSchema);
+    await createTableIfNotExists(process.env.TABLE_NAMES_BUDGETS, budgetSchema);
 }
 
-// JWT secret key for signing tokens (placeholder in your `secrets.js`)
-const secretSalt = SECRET_SALT;
+// JWT secret key for signing tokens (use environment variable)
+const secretSalt = process.env.SECRET_SALT;
 
 // Register endpoint
 app.post('/register', async (req, res) => {
@@ -87,7 +86,7 @@ app.post('/register', async (req, res) => {
     const userId = uuidv4();
 
     const params = {
-        TableName: TABLE_NAMES.users,
+        TableName: process.env.TABLE_NAMES_USERS,
         Item: {
             id: { S: userId },
             username: { S: username },
@@ -112,7 +111,7 @@ app.post('/login', async (req, res) => {
     const { username, password } = req.body;
     
     const params = {
-        TableName: TABLE_NAMES.users,
+        TableName: process.env.TABLE_NAMES_USERS,
         Key: {
             id: { S: username },
         },
@@ -142,7 +141,7 @@ app.post('/add', async (req, res) => {
     const expenseId = uuidv4();
 
     const params = {
-        TableName: TABLE_NAMES.expenses,
+        TableName: process.env.TABLE_NAMES_EXPENSES,
         Item: {
             id: { S: expenseId },
             amount: { N: amount.toString() },
@@ -162,7 +161,7 @@ app.post('/add', async (req, res) => {
 // View all expenses
 app.get('/view', async (req, res) => {
     const params = {
-        TableName: TABLE_NAMES.expenses,
+        TableName: process.env.TABLE_NAMES_EXPENSES,
     };
 
     try {
@@ -180,7 +179,7 @@ app.get('/view', async (req, res) => {
 });
 
 // Start the server and initialize DynamoDB tables
-app.listen(PORT, async () => {
-    console.log(`Running on port: ${PORT}`);
+app.listen(process.env.PORT, async () => {
+    console.log(`Running on port: ${process.env.PORT}`);
     await setupDynamoTables();
 });
