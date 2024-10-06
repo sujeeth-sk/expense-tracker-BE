@@ -6,10 +6,12 @@ import cookieParser from 'cookie-parser';
 import { mongoDB_URI, PORT } from './secrets.js';
 import ExpenseModel from './models/Expense.js';
 import UserModel from './models/User.js';
+import BudgetModel from './models/Budget.js';
 
 const app = express();
+const secretSalt = "91745eaif94q8rhiwfaAIOFUH2487#()@&*"
 
-app.use(cors())
+app.use(cors()) 
 app.use(express.json())
 
 mongoose
@@ -18,14 +20,23 @@ mongoose
     .catch((err) => console.error("Error connecting to mongo DB: ", err))
 
 app.post('/register', async (req, res) => {
-    const {username, password} = req.body;
-    console.log({username, password})
+    const { password, username} = req.body;
+    console.log({ password, username})
     try {
         const userDoc = await UserModel.create({
             username,
             password
         })
-        res.json(userDoc)
+        if(userDoc) {
+            jwt.sign({ username, id: userDoc._id }, secretSalt, {}, (err, token) => {
+                if (err) throw err;
+                res.cookie("token", token).json({
+                  id: userDoc._id,
+                  username,
+                });
+              });
+        }
+        res.json({ok:true})
     } catch (error) {
         console.error(error)
         res.status(400).json(error)
@@ -39,7 +50,14 @@ app.post('/login', async (req,res) => {
         const passOk = JSON.stringify(password) == JSON.stringify(userDoc.password)
         if(passOk){
             console.log('okokok')
-            res.json(userDoc)
+            jwt.sign({ username, id: userDoc._id }, secretSalt, {}, (err, token) => {
+                if (err) throw err;
+                res.cookie("token", token).json({
+                  id: userDoc._id,
+                  username,
+                });
+              });
+            res.json({ok: true})
         } else {
             res.json("invalid password")
         }
