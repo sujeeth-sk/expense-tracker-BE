@@ -84,6 +84,7 @@ function authenticateJWT(req, res, next) {
 }
 
 // Register endpoint
+// Register endpoint
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
 
@@ -92,7 +93,7 @@ app.post('/register', async (req, res) => {
         Item: {
             id: { S: username }, // Use username as the unique identifier
             username: { S: username },
-            password: { S: password }, // Store the plain text password
+            password: { S: password }, // Store the plain text password (in real cases, hash it)
         },
     };
 
@@ -111,16 +112,21 @@ app.post('/register', async (req, res) => {
         }
 
         // If the user does not exist, create a new user
-        const userdoc = await dbClient.send(new PutItemCommand(params));
+        await dbClient.send(new PutItemCommand(params));
 
         // Sign the JWT token
         jwt.sign({ username, id: username }, secretSalt, {}, (err, token) => {
-            if (err) throw err;
-            res.cookie('token', token).json({ ok: true, id: userId, username });
+            if (err) {
+                console.error("JWT signing error:", err);
+                return res.status(500).json({ error: "JWT signing failed" });
+            }
+
+            // Set the cookie and send the response
+            res.cookie('token', token, { httpOnly: true }).json({ ok: true, id: username, username });
         });
     } catch (error) {
         console.error("Error during registration:", error);
-        res.status(400).json({ error: "Internal Server Error", details: error.message });
+        res.status(500).json({ error: "Internal Server Error", details: error.message });
     }
 });
 
@@ -169,6 +175,16 @@ app.post('/login', async (req, res) => {
 });
 
 // Add Expense endpoint (updated to use userId from JWT and timestamp)
+// Helper function to convert month number to month name
+function getMonthName(monthNumber) {
+    const monthNames = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+    return monthNames[monthNumber];
+}
+
+// Add Expense endpoint (updated to store month as month name)
 app.post('/add', authenticateJWT, async (req, res) => {
     let { amount, category } = req.body;
 
@@ -177,33 +193,41 @@ app.post('/add', authenticateJWT, async (req, res) => {
         return res.status(400).json({ error: "Amount must be a number" });
     }
 
-    amount = parseFloat(amount);
+    // Validate if category is one of the allowed values
+    // if (!allowedCategories.includes(category)) {
+    //     return res.status(400).json({ error: `Invalid category. Allowed values are: ${allowedCategories.join(', ')}` });
+    // }
+
+    amount = parseFloat(amount); 
     const expenseId = uuidv4();
     const userId = req.user.id; // Get user ID from JWT
     const timestamp = new Date(); // Get current date
+
+    const monthName = getMonthName(timestamp.getMonth()); // Get month name
 
     const params = {
         TableName: process.env.TABLE_NAMES_EXPENSES,
         Item: {
             id: { S: expenseId },
             amount: { N: amount.toString() },
-            category: { S: category },
+            category: { S: category }, // Store the category
             userId: { S: userId }, // Store the user ID
             date: { S: timestamp.toISOString() }, // Store date as ISO string
-            month: { N: (timestamp.getMonth() + 1).toString() }, // Store month as number
-            year: { N: timestamp.getFullYear().toString() }, // Store year as number
+            month: { S: monthName }, // Store month as the name of the month
+            year: { N: timestamp.getFullYear().toString() }, // Store year as string
         },
     };
 
     try {
         await dbClient.send(new PutItemCommand(params));
-        console.log({ id: expenseId, amount, category, userId, date: timestamp });
+        console.log({ id: expenseId, amount, category, userId, date: timestamp, month: monthName });
         res.json({ ok: true });
     } catch (error) {
         console.error("Error while adding expense:", error);
         res.status(400).json({ error: "Internal Server Error", details: error.message });
     }
 });
+
 
 // View all expenses
 app.get('/view', authenticateJWT, async (req, res) => {
@@ -222,6 +246,7 @@ app.get('/view', authenticateJWT, async (req, res) => {
             amount: item.amount.S,
             category: item.category.S,
             date: item.date.S,
+            month: item.month.S
         }));
         res.json(expenses);
     } catch (error) {
