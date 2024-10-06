@@ -98,7 +98,7 @@ app.post('/register', async (req, res) => {
         await dbClient.send(new PutItemCommand(params));
         jwt.sign({ username, id: userId }, secretSalt, {}, (err, token) => {
             if (err) throw err;
-            res.cookie('token', token).json({ id: userId, username });
+            res.cookie('token', token).json({ ok: true, id: userId, username });
         });
     } catch (error) {
         console.error(error);
@@ -124,7 +124,7 @@ app.post('/login', async (req, res) => {
         if (passOk) {
             jwt.sign({ username, id: Item.id.S }, secretSalt, {}, (err, token) => {
                 if (err) throw err;
-                res.cookie('token', token).json({ id: Item.id.S, username });
+                res.cookie('token', token).json({ ok: true, token: token, id: Item.id.S, username: username, token: token});
             });
         } else {
             res.json("Invalid password");
