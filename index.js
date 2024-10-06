@@ -116,8 +116,7 @@ app.post('/register', async (req, res) => {
         // Sign the JWT token
         jwt.sign({ username, id: username }, secretSalt, {}, (err, token) => {
             if (err) throw err;
-            console.log("User created: ", userdoc);
-            res.cookie('token', token).json({ 'ok':true });
+            res.cookie('token', token).json({ ok: true, id: userId, username });
         });
     } catch (error) {
         console.error("Error during registration:", error);
