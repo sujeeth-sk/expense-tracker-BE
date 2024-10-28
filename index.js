@@ -248,10 +248,13 @@ app.get('/view', authenticateJWT, async (req, res) => {
             date: item.date.S,
             month: item.month.S
         }));
-        res.json(expenses);
+        res.json({
+            ok: true,
+            expenses: expenses,
+        });
     } catch (error) {
         console.error(error);
-        res.status(400).json({ error: "Internal Server Error", details: error.message });
+        res.status(400).json({ ok: false, details: error.message });
     }
 });
 
