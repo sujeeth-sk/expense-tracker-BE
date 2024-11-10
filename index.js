@@ -73,7 +73,7 @@ const secretSalt = process.env.SECRET_SALT;
 
 // Middleware to verify JWT and extract user ID
 function authenticateJWT(req, res, next) {
-    const token = req.cookies.token;
+    const { token } = req.body;
     if (!token) return res.status(401).json({ error: "Unauthorized" });
 
     jwt.verify(token, secretSalt, (err, decoded) => {
@@ -162,7 +162,7 @@ app.post('/login', async (req, res) => {
             jwt.sign({ username, id: Item.id.S }, secretSalt, {}, (err, token) => {
                 if (err) throw err;
 
-                res.cookie('token', token).json({ 'ok' : true });
+                res.cookie('token', token).json({ 'ok' : true, 'token': token })    ;
                 console.log("User logged in successfully");
             });
         } else {
@@ -170,7 +170,7 @@ app.post('/login', async (req, res) => {
         }
     } catch (error) {
         console.error("Error during login:", error);
-        res.status(400).json({ error: "Internal Server Error", details: error.message });
+        res.status(400).json({ 'error': "Internal Server Error", 'details': error.message });
     }
 });
 
@@ -230,7 +230,8 @@ app.post('/add', authenticateJWT, async (req, res) => {
 
 
 // View all expenses
-app.get('/view', authenticateJWT, async (req, res) => {
+app.post('/view', authenticateJWT, async (req, res) => {
+
     const params = {
         TableName: process.env.TABLE_NAMES_EXPENSES,
         FilterExpression: "userId = :userId",
@@ -248,10 +249,13 @@ app.get('/view', authenticateJWT, async (req, res) => {
             date: item.date.S,
             month: item.month.S
         }));
-        res.json(expenses);
+        res.json({
+            ok: true,
+            expenses: expenses,
+        });
     } catch (error) {
         console.error(error);
-        res.status(400).json({ error: "Internal Server Error", details: error.message });
+        res.status(400).json({ ok: false, details: error.message });
     }
 });
 
