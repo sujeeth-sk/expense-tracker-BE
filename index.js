@@ -127,7 +127,7 @@ app.post('/register', async (req, res) => {
     } catch (error) {
         console.error("Error during registration:", error);
         res.status(500).json({ error: "Internal Server Error", details: error.message });
-    }
+    } 
 });
 
 
@@ -243,7 +243,7 @@ app.get('/view', authenticateJWT, async (req, res) => {
         const data = await dbClient.send(new ScanCommand(params));
         const expenses = data.Items.map(item => ({
             id: item.id.S,
-            amount: item.amount.S,
+            amount: item.amount.N,
             category: item.category.S,
             date: item.date.S,
             month: item.month.S
