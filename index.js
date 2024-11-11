@@ -108,7 +108,7 @@ app.post('/register', async (req, res) => {
 
         const existingUser = await dbClient.send(new GetItemCommand(getParams));
         if (existingUser.Item) {
-            return res.status(400).json({ message: "Username already exists" });
+            return res.status(400).json({ ok: false, message: "Username already exists" });
         }
 
         // If the user does not exist, create a new user
@@ -150,7 +150,7 @@ app.post('/login', async (req, res) => {
         console.log("Retrieved item:", Item);
 
         if (!Item) {
-            return res.status(401).json({ message: "User not found" });
+            return res.status(401).json({ ok: false, message: "User not found" });
         }
 
         // Verify the password
@@ -166,11 +166,11 @@ app.post('/login', async (req, res) => {
                 console.log("User logged in successfully");
             });
         } else {
-            res.status(401).json({ message: "Invalid password" });
+            res.status(401).json({ ok: false, message: "Invalid password" });
         }
     } catch (error) {
         console.error("Error during login:", error);
-        res.status(400).json({ 'error': "Internal Server Error", 'details': error.message });
+        res.status(400).json({ ok: false, 'error': "Internal Server Error", 'details': error.message });
     }
 });
 
@@ -190,7 +190,7 @@ app.post('/add', authenticateJWT, async (req, res) => {
 
     // Validate if amount is a number
     if (isNaN(amount)) {
-        return res.status(400).json({ error: "Amount must be a number" });
+        return res.status(400).json({ ok: false, error: "Amount must be a number" });
     }
 
     // Validate if category is one of the allowed values
@@ -224,7 +224,7 @@ app.post('/add', authenticateJWT, async (req, res) => {
         res.json({ ok: true });
     } catch (error) {
         console.error("Error while adding expense:", error);
-        res.status(400).json({ error: "Internal Server Error", details: error.message });
+        res.status(400).json({ ok: false, error: "Internal Server Error", details: error.message });
     }
 });
 
